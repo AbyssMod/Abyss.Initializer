@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Reflection;
+using System.Net;
 using System.Reflection.Emit;
 using BepInEx;
 using BepInEx.Bootstrap;
@@ -101,7 +101,18 @@ internal class Initializer
         foreach ((string name, var assembly) in referencedAbyssAssemblies.Select(x => (x.Key, x.Value)).Where(x=> !currentAssemblies.Contains(x.Key)))
         {
             _logger.LogInfo($"{name} is a required dependency and will automatically downloaded.");
-
+            var githubUrl = $"https://github.com/AbyssMod/{name}/releases/latest/download/{name}.dll";
+            var assemblyPath = Path.Combine(Paths.PluginPath, $"{name}.dll");
+            try
+            {
+                using var webClient = new WebClient();
+                webClient.DownloadFile(githubUrl, assemblyPath);
+            }
+            catch (Exception e)
+            {
+                _logger.LogError($"Failed to download {name} from {githubUrl}.");
+                _logger.LogError(e);
+            }
         }
 
         return pluginInfos;
