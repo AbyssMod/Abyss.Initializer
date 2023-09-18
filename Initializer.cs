@@ -9,12 +9,11 @@ using BepInEx.Bootstrap;
 using BepInEx.Logging;
 using HarmonyLib;
 using Mono.Cecil;
-using Logger = BepInEx.Logging.Logger;
 
-namespace Abyss.Initializer;
+namespace Abyss;
 
 // ReSharper disable once UnusedType.Global
-internal class Initializer
+internal static class Initializer
 {
     private const string Id = "com.grahamkracker.abyss.initializer";
     private const string Name = "Abyss.Initializer";
@@ -100,6 +99,7 @@ internal class Initializer
 
         foreach ((string name, var assembly) in referencedAbyssAssemblies.Select(x => (x.Key, x.Value)).Where(x=> !currentAssemblies.Contains(x.Key)))
         {
+            //todo: versioning
             _logger.LogInfo($"{name} is a required dependency and will automatically downloaded.");
             var githubUrl = $"https://github.com/AbyssMod/{name}/releases/latest/download/{name}.dll";
             var assemblyPath = Path.Combine(Paths.PluginPath, $"{name}.dll");
