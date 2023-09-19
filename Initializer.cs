@@ -101,18 +101,31 @@ internal static class Initializer
         {
             //todo: versioning
             _logger.LogInfo($"{name} is a required dependency and will automatically downloaded.");
-            var githubUrl = $"https://github.com/AbyssMod/{name}/releases/latest/download/{name}.dll";
-            var assemblyPath = Path.Combine(Paths.PluginPath, $"{name}.dll");
+            var dllUrl = $"https://github.com/AbyssMod/Abyss/releases/latest/download/{name}.dll";
+
+            using var webClient = new WebClient();
+
             try
             {
-                using var webClient = new WebClient();
-                webClient.DownloadFile(githubUrl, assemblyPath);
+                webClient.DownloadFile(dllUrl, Path.Combine(Paths.PluginPath, $"{name}.dll"));
             }
             catch (Exception e)
             {
-                _logger.LogError($"Failed to download {name} from {githubUrl}.");
+                _logger.LogError($"Failed to download {name} from {dllUrl}.");
                 _logger.LogError(e);
             }
+
+            var xmlUrl = $"https://github.com/AbyssMod/Abyss/releases/latest/download/{name}.xml";
+            try
+            {
+                webClient.DownloadFile(xmlUrl, Path.Combine(Paths.PluginPath, $"{name}.xml"));
+            }
+            catch (Exception e)
+            {
+                _logger.LogError($"Failed to download {name} from {xmlUrl}.");
+                _logger.LogError(e);
+            }
+
         }
 
         return pluginInfos;
