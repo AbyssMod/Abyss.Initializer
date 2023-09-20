@@ -1,0 +1,15 @@
+name: Build
+
+on:
+  push:
+    branches:
+      - '*'
+    tags:
+      - '*'
+      
+jobs:
+  abyssworkflow:
+    permissions:
+      contents: write
+    uses: AbyssMod/Abyss/.github/workflows/submodulebuild.yml@main
+    secrets: inherit
