@@ -19,7 +19,8 @@ internal static class Initializer
     private const string Name = "Abyss.Initializer";
 
     // ReSharper disable once UnusedMember.Global
-    public static IEnumerable<string> TargetDLLs { get; } = Array.Empty<string>(); // Needed in order to get recognized as a patcher
+    public static IEnumerable<string> TargetDLLs { get; } =
+        Array.Empty<string>(); // Needed in order to get recognized as a patcher
 
     private static ManualLogSource _logger = null!;
     private static Harmony _harmonyInstance = null!;
@@ -39,24 +40,28 @@ internal static class Initializer
             postfix: new HarmonyMethod(typeof(Initializer).GetMethod(nameof(Chainloader_Start))));
     }
 
-    public static void Chainloader_Start() => _harmonyInstance.Patch(typeof(Chainloader).GetMethod(nameof(Chainloader.Start)),
+    public static void Chainloader_Start() => _harmonyInstance.Patch(
+        typeof(Chainloader).GetMethod(nameof(Chainloader.Start)),
         transpiler: new HarmonyMethod(typeof(Initializer).GetMethod(nameof(FindPluginTypes))));
 
     public static IEnumerable<CodeInstruction> FindPluginTypes(IEnumerable<CodeInstruction> instructions)
     {
         foreach (var code in instructions)
         {
-            if (code.Calls(AccessTools.Method(typeof(TypeLoader), nameof(TypeLoader.FindPluginTypes)).MakeGenericMethod(typeof(PluginInfo))))
+            if (code.Calls(AccessTools.Method(typeof(TypeLoader), nameof(TypeLoader.FindPluginTypes))
+                    .MakeGenericMethod(typeof(PluginInfo))))
             {
                 yield return code;
-                yield return new CodeInstruction(OpCodes.Call, typeof(Initializer).GetMethod(nameof(TypeLoader_FindPluginTypes)));
+                yield return new CodeInstruction(OpCodes.Call,
+                    typeof(Initializer).GetMethod(nameof(TypeLoader_FindPluginTypes)));
             }
             else if (code.Calls(AccessTools.PropertySetter(typeof(PluginInfo), nameof(PluginInfo.Instance))))
             {
                 yield return code;
 
                 yield return new CodeInstruction(OpCodes.Ldloc, 23); //pluginInfo
-                yield return new CodeInstruction(OpCodes.Call, typeof(Initializer).GetMethod(nameof(PluginInfo_set_Instance)));
+                yield return new CodeInstruction(OpCodes.Call,
+                    typeof(Initializer).GetMethod(nameof(PluginInfo_set_Instance)));
             }
             else
             {
@@ -78,9 +83,11 @@ internal static class Initializer
     }
 
 
-    public static Dictionary<string, List<PluginInfo>> TypeLoader_FindPluginTypes(Dictionary<string, List<PluginInfo>> pluginInfos)
+    public static Dictionary<string, List<PluginInfo>> TypeLoader_FindPluginTypes(
+        Dictionary<string, List<PluginInfo>> pluginInfos)
     {
         Dictionary<string, AssemblyNameReference> referencedAbyssAssemblies = new();
+        Dictionary<string, List<PluginInfo>> addedPluginInfos = new();
         HashSet<string> currentAssemblies = new();
         foreach (var location in pluginInfos.Keys)
         {
@@ -88,7 +95,7 @@ internal static class Initializer
             var assemblyName = Path.GetFileNameWithoutExtension(location);
             _logger.LogInfo($"Scanning {assemblyName} for abyss dependencies to download.");
             currentAssemblies.Add(assemblyName);
-            foreach (var assemblyNameReference in module.AssemblyReferences.Where(x=> x.Name.StartsWith("Abyss")))
+            foreach (var assemblyNameReference in module.AssemblyReferences.Where(x => x.Name.StartsWith("Abyss")))
             {
                 if (!referencedAbyssAssemblies.ContainsKey(assemblyNameReference.Name))
                 {
@@ -97,37 +104,98 @@ internal static class Initializer
             }
         }
 
-        foreach ((string name, var assembly) in referencedAbyssAssemblies.Select(x => (x.Key, x.Value)).Where(x=> !currentAssemblies.Contains(x.Key)))
+        foreach ((string name, _) in referencedAbyssAssemblies.Select(x => (x.Key, x.Value))
+                     .Where(x => !currentAssemblies.Contains(x.Key)))
         {
-            //todo: versioning
-            _logger.LogInfo($"{name} is a required dependency and will automatically downloaded.");
-            var dllUrl = $"https://github.com/AbyssMod/Abyss/releases/latest/download/{name}.dll";
-
-            using var webClient = new WebClient();
-
-            try
-            {
-                webClient.DownloadFile(dllUrl, Path.Combine(Paths.PluginPath, $"{name}.dll"));
-            }
-            catch (Exception e)
-            {
-                _logger.LogError($"Failed to download {name} from {dllUrl}.");
-                _logger.LogError(e);
-            }
-
-            var xmlUrl = $"https://github.com/AbyssMod/Abyss/releases/latest/download/{name}.xml";
-            try
-            {
-                webClient.DownloadFile(xmlUrl, Path.Combine(Paths.PluginPath, $"{name}.xml"));
-            }
-            catch (Exception e)
-            {
-                _logger.LogError($"Failed to download {name} from {xmlUrl}.");
-                _logger.LogError(e);
-            }
-
+            DownloadAbyssModule(name, currentAssemblies, addedPluginInfos, referencedAbyssAssemblies);
         }
 
+        pluginInfos = pluginInfos.Concat(addedPluginInfos).ToDictionary(x => x.Key, x => x.Value);
+
         return pluginInfos;
+    }
+
+    private static void DownloadAbyssModule(string name, ICollection<string> currentAssemblies,
+        IDictionary<string, List<PluginInfo>> addedPluginInfos,
+        IDictionary<string, AssemblyNameReference> referencedAbyssAssemblies)
+    {
+        //todo: versioning
+        _logger.LogInfo($"{name} is a required dependency and will automatically downloaded.");
+
+
+        var xmlUrl = $"https://github.com/AbyssMod/{name}/releases/latest/download/{name}.xml";
+        try
+        {
+            using var webClient = new WebClient();
+            webClient.DownloadFile(xmlUrl, Path.Combine(Paths.PluginPath, $"{name}.xml"));
+        }
+        catch (Exception e)
+        {
+            _logger.LogWarning($"Failed to download {name}.xml from {xmlUrl}.");
+
+            if (e is WebException webException)
+            {
+                _logger.LogError(webException.Message);
+            }
+            else
+            {
+                _logger.LogError(e);
+            }
+        }
+
+        if (DownloadAbyssDll($"https://github.com/AbyssMod/{name}/releases/latest/download/{name}.dll", name,
+                out var assemblyDefinition))
+        {
+            var hasBepinPlugins = AccessTools.Method(typeof(Chainloader), "HasBepinPlugins");
+            var file = Path.Combine(Paths.PluginPath, $"{name}.dll");
+            var abyssAssembyDef = AssemblyDefinition.ReadAssembly(file, TypeLoader.ReaderParameters);
+
+            foreach (var nameReference in abyssAssembyDef.MainModule.AssemblyReferences.Where(t => t.Name.StartsWith("Abyss") && !referencedAbyssAssemblies.ContainsKey(t.Name) && !currentAssemblies.Contains(t.Name)))
+            {
+                DownloadAbyssModule(nameReference.Name, currentAssemblies, addedPluginInfos, referencedAbyssAssemblies);
+            }
+
+            if (!((bool)hasBepinPlugins.Invoke(null, new object[] { abyssAssembyDef })))
+            {
+                addedPluginInfos[file] = new List<PluginInfo>();
+                abyssAssembyDef.Dispose();
+                return;
+            }
+
+            List<PluginInfo> list = abyssAssembyDef.MainModule.Types.Select(Chainloader.ToPluginInfo)
+                .Where((t => t != null)).ToList();
+
+            assemblyDefinition.Dispose();
+            addedPluginInfos.Add(file, list);
+        }
+    }
+
+    private static bool DownloadAbyssDll(string url, string name, out AssemblyDefinition assemblyDefinition)
+    {
+        assemblyDefinition = null!;
+        using var webClient = new WebClient();
+
+        try
+        {
+            webClient.DownloadFile(url, Path.Combine(Paths.PluginPath, $"{name}.dll"));
+            assemblyDefinition = AssemblyDefinition.ReadAssembly(Path.Combine(Paths.PluginPath, $"{name}.dll"),
+                TypeLoader.ReaderParameters);
+            return true;
+        }
+        catch (Exception e)
+        {
+            _logger.LogWarning($"Failed to download {name}.dll from {url}.");
+
+            if (e is WebException webException)
+            {
+                _logger.LogError(webException.Message);
+            }
+            else
+            {
+                _logger.LogError(e);
+            }
+
+            return false;
+        }
     }
 }
