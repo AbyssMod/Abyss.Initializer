@@ -104,8 +104,7 @@ internal static class Initializer
             }
         }
 
-        foreach ((string name, _) in referencedAbyssAssemblies.Select(x => (x.Key, x.Value))
-                     .Where(x => !currentAssemblies.Contains(x.Key)))
+        foreach ((string name, _) in referencedAbyssAssemblies.Select(x => (x.Key, x.Value)).Where(x => !currentAssemblies.Contains(x.Key)))
         {
             DownloadAbyssModule(name, currentAssemblies, addedPluginInfos, referencedAbyssAssemblies);
         }
@@ -119,9 +118,7 @@ internal static class Initializer
         IDictionary<string, List<PluginInfo>> addedPluginInfos,
         IDictionary<string, AssemblyNameReference> referencedAbyssAssemblies)
     {
-        //todo: versioning
         _logger.LogInfo($"{name} is a required dependency and will automatically downloaded.");
-
 
         var xmlUrl = $"https://github.com/AbyssMod/{name}/releases/latest/download/{name}.xml";
         try
@@ -142,6 +139,8 @@ internal static class Initializer
                 _logger.LogError(e);
             }
         }
+
+
 
         if (DownloadAbyssDll($"https://github.com/AbyssMod/{name}/releases/latest/download/{name}.dll", name,
                 out var assemblyDefinition))
