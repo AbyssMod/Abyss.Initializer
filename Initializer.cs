@@ -10,8 +10,6 @@ using BepInEx.Bootstrap;
 using BepInEx.Logging;
 using HarmonyLib;
 using Mono.Cecil;
-using Winch.Core;
-using Winch.Logging;
 using Logger = BepInEx.Logging.Logger;
 
 namespace Abyss;
@@ -27,7 +25,6 @@ internal static class Initializer
         Array.Empty<string>(); // Needed in order to get recognized as a patcher
 
     private static ManualLogSource _logger = null!;
-    private static ManualLogSource _winchLogger = null!;
 
     private static Harmony _harmonyInstance = null!;
 
@@ -41,7 +38,6 @@ internal static class Initializer
     public static void Finish() //called by bie
     {
         _logger = Logger.CreateLogSource(Name);
-        _winchLogger = Logger.CreateLogSource("Winch");
         _harmonyInstance = new Harmony(Id);
         _harmonyInstance.Patch(typeof(Chainloader).GetMethod(nameof(Chainloader.Initialize)),
             postfix: new HarmonyMethod(typeof(Initializer).GetMethod(nameof(Chainloader_Start))));
@@ -49,94 +45,9 @@ internal static class Initializer
 
     public static void Chainloader_Start()
     {
-        InitWinch();
         _harmonyInstance.Patch(
             typeof(Chainloader).GetMethod(nameof(Chainloader.Start)),
             transpiler: new HarmonyMethod(typeof(Initializer).GetMethod(nameof(FindPluginTypes))));
-    }
-
-
-    private static void DownloadWinch()
-    {
-        var winchUrl = "https://github.com/DREDGE-Mods/Winch/releases/latest/download/Winch.zip";
-        var winchFolder = Path.Combine(Paths.GameRootPath, "Winch");
-
-        if (File.Exists(Path.Combine(winchFolder, "Winch.dll")))
-            return;
-
-        try
-        {
-            using var webClient = new WebClient();
-            if (Directory.Exists(winchFolder))
-                Directory.Delete(winchFolder, true);
-            Directory.CreateDirectory(winchFolder);
-            webClient.DownloadFile(winchUrl, Path.Combine(winchFolder, "Winch.zip"));
-            System.IO.Compression.ZipFile.ExtractToDirectory(Path.Combine(winchFolder, "Winch.zip"), winchFolder);
-            File.Delete(Path.Combine(winchFolder, "Winch.zip"));
-            var releaseDir = Path.Combine(winchFolder, "Release");
-
-            //move all files and folders from Release to Winch
-            foreach (var file in Directory.GetFiles(releaseDir))
-            {
-                File.Move(file, Path.Combine(winchFolder, Path.GetFileName(file)));
-            }
-            foreach (var dir in Directory.GetDirectories(releaseDir))
-            {
-                Directory.Move(dir, Path.Combine(winchFolder, Path.GetFileName(dir)));
-            }
-
-            Directory.Delete(releaseDir);
-        }
-        catch (Exception e)
-        {
-            _logger.LogWarning($"Failed to download winch.zip from {winchUrl}.");
-
-            if (e is WebException webException)
-            {
-                _logger.LogError(webException.Message);
-                _logger.LogError(webException.StackTrace);
-            }
-            else
-            {
-                _logger.LogError(e);
-            }
-        }
-    }
-
-    private static void InitWinch()
-    {
-        DownloadWinch();
-
-        var winchAsm = Assembly.LoadFile(Path.Combine(Paths.GameRootPath, "Winch", "Winch.dll"));
-        winchAsm.GetType("Winch.Core.WinchCore").GetMethod("Main")!.Invoke(null, null);
-        _harmonyInstance.Patch(AccessTools.Method(typeof(Winch.Logging.Logger), "Log",[typeof(Winch.LogLevel), typeof(string), typeof(string)]), postfix: new HarmonyMethod(typeof(Initializer).GetMethod(nameof(WinchMessageLogged))));
-    }
-
-    public static void WinchMessageLogged(Winch.Logging.Logger __instance, Winch.LogLevel level, string message, string source)
-    {
-        var logMessage = $"[{level}] : {message}";
-
-        switch (level)
-        {
-            case Winch.LogLevel.INFO:
-                _winchLogger.LogInfo(logMessage);
-                break;
-            case Winch.LogLevel.DEBUG:
-                _winchLogger.LogInfo(logMessage);
-                break;
-            case Winch.LogLevel.WARN:
-                _winchLogger.LogWarning(logMessage);
-                break;
-            case Winch.LogLevel.ERROR:
-                _winchLogger.LogError(logMessage);
-                break;
-            case Winch.LogLevel.UNITY:
-                _winchLogger.LogInfo(logMessage);
-                break;
-            default:
-                _winchLogger.LogMessage(logMessage);
-                break;
-        }
     }
 
     public static IEnumerable<CodeInstruction> FindPluginTypes(IEnumerable<CodeInstruction> instructions)

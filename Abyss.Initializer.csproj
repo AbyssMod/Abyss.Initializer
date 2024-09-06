@@ -20,12 +20,10 @@
         <Authors>GrahamKracker</Authors>
 
         <IsPackable>false</IsPackable>
-        <DontUseDredgeLibs>true</DontUseDredgeLibs>
     </PropertyGroup>
 
     <ItemGroup>
         <None Include=".github\workflows\build.yml" />
-        <PackageReference Include="Winch" Version="0.4.0"/>
     </ItemGroup>
 
     <Import Condition="Exists('..\..\dredge.targets')" Project="..\..\dredge.targets"/>
